@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<!-- This is based on DillingerLee's great template here:
+https://github.com/Team-Code/KA_Offline -->
+<html> 
+ <head>
+    <title>Fourier Animation</title> 
+</head>
+ <body>
+    <p align="center"> 
+	<!--This draws the Canvas on the webpage -->
+      <canvas id="mycanvas"></canvas> 
+    </p>
+ </body>
+ 
+ <!-- Run all the JavaScript stuff -->
+ <!-- Include the processing.js library -->
+ <!-- See https://khanacademy.zendesk.com/hc/en-us/articles/202260404-What-parts-of-ProcessingJS-does-Khan-Academy-support- for differences -->
+ <script src="https://cdn.jsdelivr.net/processing.js/1.4.8/processing.min.js"></script> 
+ 
+ <script>
+    var sketchProc = function(processingInstance) {
+     with (processingInstance) {
+        size(600, 600); 
+        frameRate(60);
+
+//Made by Shivum Banerjee, 17 Jan 2021
+
+var keys = [];
+var level = 0;
+var update = true;
+var pause = false;
+var scene = 'title';
+var rows = 15;
+var columns = 15;
+var rotateAngle = 0;
+var scoreDecPlaces = 1;
+
+var collision = function(x, y, w, h, theta, x2, y2, w2, h2, theta2) {
+    
+    var storage = theta2;
+    theta2 -= theta;
+    theta = 0;
+    
+    x2 -= x;
+    x = 0;
+    y2 -= y;
+    y = 0;
+    
+    //the importance of precise collision detection is low; treating the rotated square as if it is unrotated is fine.
+    if(true) {
+        if(x + w > x2 && x < x2 + w2 && y + h > y2 && y < y2 + h2) {
+            return true;   
+        } else {
+            return false;   
+        }
+    } else {
+        var length = (2*w*pow(sin(theta2),2))/(cos(theta2)+sin(theta2)) + w;
+        var x3 = x2*cos(theta2) - y2*sin(theta2);
+        var y3 = y2*cos(theta2) + x2*cos(theta2);
+        
+        if(x + w > x3 && x < x3 + length && y + h > y3 && y < y3 + length) {
+            return true;   
+        } else {
+            return false;
+        }
+    }
+    
+    if(theta2 === 0) {
+        if(x + w > x2 && x < x2 + w2 && y + h > y2 && y < y2 + h2) {
+            return true;   
+        } else {
+            return false;   
+        }
+    } else {
+        var DLCorn = new PVector(x2*cos(theta2)-y2*sin(theta2),y2*cos(theta2)+x2*sin(theta2));
+        var DRCorn = new PVector((x2+w2)*cos(theta2)-y2*sin(theta2),y2*cos(theta2)+(x2+w2)*sin(theta2));
+        var ULCorn = new PVector(x2*cos(theta2)-(y2+h2)*sin(theta2),(y2+h2)*cos(theta2)+x2*sin(theta2));
+        var URCorn = new PVector((x2+w2)*cos(theta2)-(y2+h2)*sin(theta2),(y2+h2)*cos(theta2)+(x2+w2)*sin(theta2));
+        
+        if((DLCorn.x < w2 && DLCorn.y < h2) || (DRCorn.x < w2 && DRCorn.y < h2) || (ULCorn.x < w2 && ULCorn.y < h2) || (URCorn.x < w2 && ULCorn.y < h2)) {
+            return true;   
+        } else {
+            theta2 += storage;
+            theta += storage;
+            
+            x -= x2;
+            y -= y2;
+            
+            x2 = 0;
+            y2 = 0;
+            
+        }
+        
+    }
+    
+};
+
+//user input
+keyPressed = function() {
+    keys[keyCode] = true;
+        
+    if(keyCode === 16 || keyCode === 80) {
+        if(pause) {
+           pause = false; 
+        } else {
+            pause = true;
+        }
+    }
+};
+
+keyReleased = function() {
+    keys[keyCode] = false;
+};
+
+//buttons
+mouseClicked = function() {
+    switch(scene) {
+        case 'title':
+            if(mouseX > 260 && mouseX < 340 &&
+            mouseY < 400 && mouseY > 360) {
+                scene = 'game';   
+            } 
+            if(mouseX > 260 && mouseX < 460 &&
+            mouseY > 420 && mouseY < 460) {
+                scene = 'instructions';
+            }
+        break;
+        
+        case 'win':
+            if(mouseX > 260 && mouseX < 340 &&
+            mouseY > 350 && mouseY < 390) {
+                rotateAngle = 0;
+                scene = 'title';
+            } 
+        break;
+        
+        case 'instructions':
+            if(mouseX > 260 && mouseX < 340 && mouseY > 440 &&
+            mouseY < 480) {
+                rotateAngle= 0;
+                scene = 'title';
+            }
+        break;
+    }
+};
+
+//all the objects used
+var Player = function(x, y) {
+    this.spawn = new PVector(0,0);
+    this.position = new PVector(x,y);
+    this.velocity = new PVector(0,0);
+    this.score = 0;
+    this.inAir = true;
+    this.rotation = 0;
+    this.rotate = false;
+    this.direction = 0;
+};
+
+Player.prototype.collisionDetection = function(blocks, velX, velY) {
+    this.inAir = true;
+    for(var i = 0; i < blocks.length; i++) {
+        var ground = blocks[i];
+    
+        if(collision(this.position.x,this.position.y,40,40,this.rotation,ground.position.x,ground.position.y,40,40,0)) {
+            if(velX > 0) {
+                this.rotate = false;
+                this.rotation = 0;
+
+                this.position.x = ground.position.x - 40;
+                this.velocity.x = 0;
+            }
+            if(velX < 0) {
+                this.rotate = false;
+                this.rotation = 0;
+                this.position.x = ground.position.x + 40;
+                this.velocity.x = 0;
+            }
+            if(velY < 0) {
+                this.inAir = true;
+                this.rotate = false;
+		this.rotation = 0;
+                this.position.y = ground.position.y + 40; 
+                this.velocity.y = 0;
+            }
+            if(velY > 0) {
+                if(!(keys[UP] && keys[87])) {
+                    this.rotate = false;
+                    this.rotation = round(this.rotation/90)*90;
+                }
+		this.rotate = false;
+		this.rotation = 0;
+                this.inAir = false;
+                this.position.y = ground.position.y - 40;  
+                this.velocity.y = 0;
+             }
+        }
+    }
+};
+
+Player.prototype.move = function() {
+    
+    if(keys[LEFT] || keys[65]) {
+       this.velocity.x --;
+        if(this.velocity.x < -10) {
+            this.velocity.x = -10;   
+        }
+    }
+    if((keys[UP] || keys[87]) && !this.inAir) {
+        this.velocity.y = -21;
+        this.rotate = true;
+    }
+    if(keys[RIGHT] || keys[68]) {
+        this.velocity.x ++;
+        if(this.velocity.x > 10) {
+            this.velocity.x = 10;   
+        }
+    }
+    
+    if(this.inAir) {this.velocity.y += 2;}
+    if(this.velocity.y > 12) {this.velocity.y = 12;}
+
+
+    if(Math.abs(this.velocity.x) - pow(10,-2) < 0) {
+        this.direction = 0;   
+    } else 
+    if(this.velocity.x < 0) {
+        this.direction = -1;
+    } else if(this.velocity.x > 0) {
+        this.direction = 1;
+    } 
+    
+    if(this.rotate) {
+        this.rotation += 5*this.direction;
+    }
+    
+
+    if(!keys[LEFT] && !keys[RIGHT] && !keys[65] && !keys[68]) {
+        this.velocity.x *= 0.8;
+    }
+    
+    if(this.position.x < 0) {this.position.x = 0;}
+    
+    if(this.position.x > columns*40-40) {
+        this.position.x = columns*40-40;
+    }
+    
+    if(this.position.y > rows*40-40) {
+        this.position.x = this.spawn.x;
+        this.position.y = this.spawn.y;
+        this.velocity.mult(0);
+    }
+    
+};
+
+Player.prototype.entityCollisionDetection = function(object) {
+    
+    if(this.position.x + 40 > object.position.x && this.position.x < object.position.x + 40 && this.position.y + 40 > object.position.y && this.position.y < object.position.y + 40) {
+        switch(object.type) {
+            case 'Portal':
+                update = true;
+                level ++;
+                object.position.x = -100;
+                object.position.y = -100;
+            break;
+            
+            case 'SpaceWaste':
+                this.position.x = this.spawn.x;
+                this.position.y = this.spawn.y;
+                this.score -= 500;
+                if(this.score < 0) {
+                    this.score = 0;   
+                }
+                scoreDecPlaces = floor(Math.log10(this.score))+1;
+                this.velocity.mult(0);
+            break;
+            
+            case 'Enemy':
+                this.position.x = this.spawn.x;
+                this.position.y = this.spawn.y;
+                this.score -= 500;
+                if(this.score < 0) {
+                    this.score = 0;   
+                }
+                scoreDecPlaces = floor(Math.log10(this.score))+1;
+                this.velocity.mult(0);
+            break;
+            
+            case 'Coin':
+                this.score += 100;
+                scoreDecPlaces = floor(Math.log10(this.score))+1;
+                object.position.x = -100;
+                object.position.y = -100;
+            break;
+            
+            case 'Checkpoint':
+                object.checked = true;
+                this.spawn.x = object.position.x;
+                this.spawn.y = object.position.y;
+            break;
+        }
+    }
+};
+
+//Codes all the behaviors of the player so it looks neater later on
+Player.prototype.act = function(ground) {
+    
+    this.move();
+    
+    pushMatrix();
+    translate(this.position.x + 20,this.position.y + 20);
+    rotate(this.rotation);
+    
+    fill(0, 0, 255);
+    stroke(0);
+    rect(-20,-20,40,40);
+    fill(0, 255, 255);
+    noStroke();
+    rect(-16,-16,33,33);
+    
+    popMatrix();
+    
+    this.position.x += this.velocity.x;
+    this.collisionDetection(ground,this.velocity.x,0);
+    
+    this.position.y += this.velocity.y;
+    this.collisionDetection(ground,0,this.velocity.y);
+};
+
+
+var Enemy = function(x,y) {
+    this.position = new PVector(x,y);
+    this.velocity = new PVector(-round(level/8)-1,0);
+    this.inAir = true;
+    this.type = 'Enemy';
+};
+
+Enemy.prototype.collisionDetection = function(blocks,badBlocks,velX,velY) {
+    this.inAir = true;
+    for(var i = 0; i < blocks.length; i++) {
+        var ground = blocks[i];
+        if(this.position.x + 40 > ground.position.x && this.position.x < ground.position.x + 40 && this.position.y + 40 > ground.position.y && this.position.y < ground.position.y + 40) {
+            if(velX > 0) {
+                this.position.x = ground.position.x - 40;
+                this.velocity.x = -Math.abs(this.velocity.x);
+            }
+            if(velX < 0) {
+                this.position.x = ground.position.x + 40;
+                this.velocity.x = Math.abs(this.velocity.x);
+            }
+            if(velY < 0) {
+                this.inAir = true;
+                this.position.y = ground.position.y + 40; 
+                this.velocity.y = 0;
+            }
+            if(velY > 0) {
+                this.inAir = false;
+                this.position.y = ground.position.y - 40;  
+                this.velocity.y = 0;
+             }
+        }
+    }
+    for(var i = 0; i < badBlocks.length; i++) {
+        var spaceWaste = badBlocks[i]; 
+        if(this.position.x + 40 > spaceWaste.position.x && this.position.x < spaceWaste.position.x + 40 && this.position.y + 40 > spaceWaste.position.y && this.position.y < spaceWaste.position.y + 40) {
+            if(velX > 0) {
+                this.position.x = spaceWaste.position.x - 40;
+                this.velocity.x = -Math.abs(this.velocity.x);
+            }
+            if(velX < 0) {
+                this.position.x = spaceWaste.position.x + 40;
+                this.velocity.x = Math.abs(this.velocity.x);
+            }
+            if(velY < 0) {
+                this.inAir = true;
+                this.position.y = spaceWaste.position.y + 40;
+            }
+            if(velY > 0) {
+                this.inAir = false;
+                this.position.y = spaceWaste.position.y - 40;
+                this.velocity.y = 0;
+            }
+        }
+    }
+    
+};
+
+//same thing as above
+Enemy.prototype.act = function(blocks,spaceWaste) {
+    this.position.x += this.velocity.x;
+    this.collisionDetection(blocks,spaceWaste,this.velocity.x,0);
+    
+    this.position.y += this.velocity.y;
+    this.collisionDetection(blocks,spaceWaste,0,this.velocity.y);
+    
+    if(this.inAir) {
+        this.velocity.y++;
+        if(this.velocity.y > 12) {
+            this.velocity.y = 12;   
+        }
+    }
+    
+    if(this.position.x < 0) {
+        this.velocity.x = Math.abs(this.velocity.x);   
+    }
+    if(this.position.x > columns*40-40) {
+        this.velocity.x = -Math.abs(this.velocity.x);   
+    }
+    
+    fill(150, 0, 0);
+    stroke(0);
+    rect(this.position.x,this.position.y,40,40);
+    
+    fill(255, 0, 0);
+    noStroke();
+    rect(this.position.x+4,this.position.y+4,33,33);
+};
+
+var Block = function(x,y,type) {
+    this.position = new PVector(x,y);
+    this.type = type;
+    this.checked = false;
+};
+
+Block.prototype.show = function() {
+    switch(this.type) {
+        case 'Ground':
+            fill(255);
+            stroke(0);
+            rect(this.position.x,this.position.y,40,40);
+        break;
+        
+        case 'Portal':
+            fill(90);
+            stroke(0);
+            ellipse(this.position.x+20,this.position.y+20,40,40);
+            
+            fill(255, 0, 255);
+            noStroke();
+            ellipse(this.position.x+20,this.position.y+20,24,24);
+        break;
+        
+        case 'Coin':
+            stroke(0);
+            fill(255, 255, 0);
+           ellipse(this.position.x+20,this.position.y+20,40,40);
+        break;
+        
+        case 'SpaceWaste':
+            fill(255, 0, 0);
+            stroke(0);
+            rect(this.position.x,this.position.y,40,40);
+        break;
+        
+        case 'Checkpoint':
+           if(this.checked) {
+                fill(0,255,0);
+            } else {
+                fill(0,0,255);
+            }
+            stroke(0);
+            rect(this.position.x,this.position.y,40,40);
+        break;
+    }
+};
+
+var levels = [
+    [
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,   
+        0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,
+        0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,
+        0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,    
+    ],
+    
+    [
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,    
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2,
+        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,6,1,
+    ],
+    
+    [
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,1,1,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,3,0,0,0,0,0,0,1,5,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        1,1,1,1,1,1,1,1,1,6,6,6,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    ],
+    
+    [
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,4,4,4,4,
+    0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,4,4,4,4,
+    0,0,0,0,0,0,0,0,0,4,0,4,0,0,0,0,1,1,0,0,0,0,0,0,0,1,4,4,4,4,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,4,4,4,
+    0,3,1,0,0,0,0,0,0,0,0,5,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,4,4,4,
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    ],
+    
+    [
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,2,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,1,0,5,6,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,6,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,4,4,
+1,3,1,0,0,0,0,0,0,0,0,0,5,6,4,4,4,0,7,0,0,0,0,0,0,0,0,0,0,0,0,4,4,
+1,1,1,6,6,6,6,6,6,6,6,6,6,6,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    ],
+    
+    [
+        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,3,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,5,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,6,6,6,6,6,0,0,0,6,6,6,6,6,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,6,6,6,6,0,0,0,6,6,6,6,6,6,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,6,6,6,0,7,0,6,6,6,6,6,6,6,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,5,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,6,6,6,6,6,6,0,0,0,6,6,6,6,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,6,6,6,6,6,6,6,0,0,0,6,6,6,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,6,6,6,6,6,6,6,6,0,0,0,6,6,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,0,0,0,0,0,0,0,0,0,0,0,0,0,6,
+        6,6,0,0,0,0,0,0,0,0,0,0,0,6,6,
+        6,6,0,0,0,0,0,0,0,0,0,0,0,6,6,
+        6,6,0,0,0,0,0,0,0,0,0,0,0,6,6,
+        6,6,0,0,0,0,0,0,0,0,0,0,0,6,6,
+        6,6,0,0,0,0,0,0,0,0,0,0,0,6,6,
+        6,6,0,0,0,0,0,0,0,0,0,0,0,6,6,
+        6,6,6,0,0,0,0,0,0,0,0,0,6,6,6,
+        6,6,6,0,0,0,0,0,0,0,0,0,6,6,6,
+        6,6,6,0,0,0,0,0,0,0,0,0,6,6,6,
+        6,6,6,6,0,0,0,0,0,0,0,6,6,6,6,
+        6,6,6,6,0,0,0,0,0,0,0,6,6,6,6,
+        6,6,6,6,0,0,0,0,0,0,0,6,6,6,6,
+        6,6,6,6,0,0,0,0,0,0,0,6,6,6,6,
+        6,6,6,6,6,0,0,0,0,0,6,6,6,6,6,
+        6,6,6,6,6,0,0,0,0,0,6,6,6,6,6,
+        6,6,6,6,6,0,0,0,0,0,6,6,6,6,6,
+        6,6,6,6,6,0,0,0,0,0,6,6,6,6,6,
+        6,6,6,6,6,0,0,0,0,0,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,0,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,1,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        6,6,6,6,6,6,0,0,0,6,6,6,6,6,6,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,2,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    ],
+    
+];
+level = 6;
+var levelDimensions = [[15,17],[15,17],[15,26],[15,30],[15,33],[120,15]];
+
+var p = new Player(0,0);
+var portal = new Block(-10,-10,'Portal');
+var checkpoint = new Block(-100,-100,'Checkpoint');
+var ground = [];
+var enemies = [];
+var coins = [];
+var spaceWaste = [];
+draw = function() {
+    switch(scene) {
+        //title screen
+        case 'title':
+            if(rotateAngle === 0) {
+                background(0);
+                update = true;
+                level = 0;
+                p.score = 0;
+                textSize(90);
+                fill(50);
+                text("Fall",215,205);
+                fill(255);
+                text("Fall",221,211);
+            }
+            
+            pushMatrix();
+            
+            translate(300,280);
+            rotate(rotateAngle);
+            
+            fill(0,0,255);
+            rect(-40,-40,80,80);
+            
+            fill(0,255,255);
+            noStroke();
+            
+            rect(-36,-36,72,72);
+            
+            popMatrix();
+            
+            rotateAngle += random(-10,20);
+            
+            if(mouseX > 260 && mouseX < 340 && mouseY < 400 && mouseY > 360) {
+                fill(92);
+            } else {
+                fill(255);
+            }
+            rect(260,360,80,40,10);
+            fill(0);
+            textSize(15);
+            text("Start",283,385);
+            
+            if(mouseX > 260 && mouseX < 340 && mouseY > 420 && 
+            mouseY < 460) {
+                fill(90);
+            } else {
+                fill(255);
+            }
+            rect(260,420,80,40,10);
+            
+            textSize(13);
+            fill(0);
+            text("How to Play",265,445);
+        break;
+        
+        //game
+        case 'game':
+            background(0,0,0);
+            //level changer and loader
+            if(update && level < levels.length) {
+                p.spawn = new PVector(560,0);
+                checkpoint.position = new PVector(-100,-100);
+                checkpoint.checked = false;
+                rows = levelDimensions[level][0];
+                columns = levelDimensions[level][1];
+                ground = [];
+                enemies = [];
+                coins = [];
+                spaceWaste = [];
+                for(var y = 0; y < rows; y++) {
+                    for(var x = 0; x < columns; x++) {
+                        switch(levels[level][columns*y + x]) {
+                            case 1:
+                                ground.push(new Block(40*x,40*y,'Ground'));
+                            break;
+                            
+                            case 2:                            
+                                portal.position = new PVector(40*x,40*y);
+                            break;
+                            
+                            case 3:
+                                p.spawn = new PVector(40*x,40*y);
+                            break;
+                            
+                            case 4:
+                                coins.push(new Block(40*x,40*y,'Coin'));
+                            break;
+                            
+                            case 5:
+                                enemies.push(new Enemy(40*x,40*y));
+                            break;
+                            
+                            case 6:
+                                spaceWaste.push(new Block(40*x,40*y,'SpaceWaste'));
+                            break;
+                            
+                            case 7:
+                                checkpoint.position = new PVector(40*x,40*y);
+                            }
+                    }
+                }
+                p.position = new PVector(p.spawn.x,p.spawn.y);
+                update = false;
+            } else if(update) {
+                scene = 'win';
+            }
+    
+            //begins the game mechanics
+            pushMatrix();
+                
+            //scrolling
+            if(p.position.x>300 && p.position.x<columns*40 - 300) {
+                translate((-p.position.x+300),0);
+            } else if(p.position.x >= columns*40-300) {
+                translate((columns-15)*-40,0);
+            }
+            
+            if(p.position.y > 300 && p.position.y < rows*40-300) {
+               translate(0,-p.position.y+300);
+            } else if(p.position.y >= 300) {
+                translate(0,(rows-15)*-40);  
+            }
+            
+            //actual game stuff--e.g, using the collision methods
+            checkpoint.show();
+            
+            p.act(ground);
+            p.entityCollisionDetection(checkpoint);
+            p.entityCollisionDetection(portal);
+
+            for(var i = 0; i < ground.length; i++) {
+                ground[i].show();
+            }
+              
+           for(var i = 0; i < spaceWaste.length; i++) {
+                spaceWaste[i].show();
+                p.entityCollisionDetection(spaceWaste[i]);
+            }
+    
+            for(var i = 0; i < enemies.length; i++) {
+                if(enemies[i].position.x > -40 && enemies[i].position.y < rows*40) {
+                    enemies[i].act(ground,spaceWaste);
+                    p.entityCollisionDetection(enemies[i]);
+                }
+            }
+    
+          for(var i = 0; i < coins.length; i++) {
+              if(coins[i].position.x > -40 && coins[i].position.y < rows*40) {
+                   coins[i].show();
+                   p.entityCollisionDetection(coins[i]);
+              }
+            }
+            
+            portal.show();
+
+            //ends game mechanics
+            popMatrix();
+            
+            //score and level displayer
+            fill(0,0,0,150);
+            if(p.score !== 0 && p.score < pow(10,21)) {
+                rect(5,5,65 + scoreDecPlaces*8,20);
+            } else if(p.score < pow(10,21)) {
+                rect(5,5,65,20);
+            } else {
+                rect(5,5,250,20);
+            }
+            rect(535,5,60,20);
+            fill(255);
+            textSize(15);
+            text("Score: " + p.score,10,20);
+            text("Level " + (level+1),540,20);
+
+            //pause handler
+            if(pause) {
+                scene = 'pause';
+            }
+            
+        break;
+        
+        //end screen
+        case 'win':
+            background(0);
+            textSize(100);
+            fill(255);
+            text("You won!",100,300);
+            if(mouseX > 260 && mouseX < 340 &&
+            mouseY > 350 && mouseY < 390) {
+                fill(90);
+            } else {
+                fill(255);
+            }
+            rect(260,350,80,40,10);
+            textSize(13);
+            fill(0);
+            text("Title Screen",265,373);
+        break;
+        
+        //instructions
+        case 'instructions':
+            background(0);
+            textSize(20);
+            fill(255);
+            
+            var px = 200;
+            var py = 100;
+            
+            text("- You are",px,py);
+            
+            text("- The ground is",px,py+50);
+            
+            text("- Collect",px,py+100);
+            
+            text("- Avoid           and",px,py+150);
+            
+            text("- Get to",px,py+200);
+            
+            text("-           is a checkpoint",px,py+250);
+            
+            text("- Arrow keys to move",px,py+300);
+            
+            fill(0, 0, 255);
+            stroke(0);
+            rect(px+90,py-30,40,40);
+            fill(0, 255, 255);
+            noStroke();
+            rect(px+94,py-26,33,33);
+            
+            stroke(0);
+            fill(255);
+            rect(px+145,py+20,40,40);
+            
+            stroke(0);
+            fill(255, 255, 0);
+            ellipse(px+100,py+90,40,40);
+            
+            fill(150, 0, 0);
+            rect(px+75,py+125,40,40);
+    
+            fill(255, 0, 0);
+            noStroke();
+            rect(px+79,py+129,33,33);
+            
+            fill(255, 0, 0);
+            stroke(0);
+            rect(px+165,py+125,40,40);
+            
+            fill(90);
+            stroke(0);
+            ellipse(px+100,py+195,40,40);
+    
+            fill(255, 0, 255);
+            noStroke();
+            ellipse(px+100,py+195,24,24);
+            
+            fill(0,0,255);
+            stroke(0);
+            rect(px+15,py+225,40,40);
+            
+            //button
+            if(mouseX > 260 && mouseX < 340 && mouseY > 440 && 
+            mouseY < 480) {
+                fill(90);
+            } else {
+                fill(255);
+            }
+            rect(260,440,80,40,10);
+            
+            textSize(13);
+            fill(0);
+            text("Title Screen",265,465);
+        break;
+        
+        case 'pause':
+            fill(255,255,255,10);
+            rect(237.5,200,125,200,10);
+            fill(0,0,0,10);
+            textSize(150);
+            text("||",260,340);
+            if(!pause) {
+                scene = 'game';
+            }
+        break;
+    }
+};
+
+
+
+    }};
+
+    // Get the canvas that Processing-js will use
+    var canvas = document.getElementById("mycanvas"); 
+    // Pass the function sketchProc (defined in myCode.js) to Processing's constructor.
+    var processingInstance = new Processing(canvas, sketchProc); 
+ </script>
+
+</html>
